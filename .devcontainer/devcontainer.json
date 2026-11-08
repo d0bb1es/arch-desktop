@@ -1,0 +1,9 @@
+{
+  "name": "arch-desktop",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+  "forwardPorts": [6080],
+  "portsAttributes": {
+    "6080": { "label": "Desktop", "onAutoForward": "openBrowser" }
+  }
+}
