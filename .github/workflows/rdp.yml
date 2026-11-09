@@ -40,6 +40,24 @@ jobs:
           echo "### Desktop link" >> "$GITHUB_STEP_SUMMARY"
           echo "$LINK" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Transfer tools
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y rclone magic-wormhole aria2
+          mkdir -p ~/share ~/Desktop
+          cat > ~/serve.sh << 'EOF'
+          #!/bin/bash
+          read -r -s -p "Password (16+ letters/digits): " P; echo
+          if [ ${#P} -lt 16 ]; then echo "Too short, need 16+"; exit 1; fi
+          pkill rclone 2>/dev/null
+          rclone serve http ~/share --addr 127.0.0.1:8000 --user nemo --pass "$P" > /tmp/rclone.log 2>&1 &
+          sleep 2
+          CF=$(find /home/runner/work -name cloudflared -type f | head -1)
+          echo "Your link will appear below. Press Ctrl+C to stop."
+          $CF tunnel --url http://localhost:8000 --no-autoupdate 2>&1 | grep --line-buffered -o 'https://[a-z0-9-]*\.trycloudflare\.com' | grep --line-buffered -v '^https://api\.'
+          EOF
+          chmod +x ~/serve.sh
+
       - name: Keep alive
         run: |
           while pgrep -f "cloudflared tunnel" > /dev/null; do sleep 30; done
