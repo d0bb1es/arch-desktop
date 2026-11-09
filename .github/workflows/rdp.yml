@@ -1,21 +1,45 @@
 name: rdp
 on: workflow_dispatch
+
+concurrency:
+  group: rdp
+  cancel-in-progress: true
+
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
     steps:
       - name: Install desktop and VNC
+        env:
+          VNC_PASS: ${{ secrets.VNC_PASSWORD }}
         run: |
+          set -e
+          if [ -z "$VNC_PASS" ]; then echo "VNC_PASSWORD secret is missing"; exit 1; fi
           sudo apt-get update
           sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server novnc websockify dbus-x11
           mkdir -p ~/.vnc
-          echo "ChangeMe123" | vncpasswd -f > ~/.vnc/passwd
+          echo "$VNC_PASS" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           vncserver :1 -geometry 1366x768 -depth 24 -xstartup /usr/bin/startxfce4
           websockify -D --web /usr/share/novnc 6080 localhost:5901
+
       - name: Start tunnel
         run: |
-          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          curl -fL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
-          ./cloudflared tunnel --url http://localhost:6080 2>&1 | tee tunnel.log
+          setsid nohup ./cloudflared tunnel --url http://localhost:6080 --no-autoupdate > tunnel.log 2>&1 &
+          for i in $(seq 1 40); do
+            URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | grep -v '^https://api\.' | head -1 || true)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "$URL" ]; then echo "No tunnel link found"; cat tunnel.log; exit 1; fi
+          LINK="$URL/vnc.html?autoconnect=true&resize=remote"
+          echo "::notice title=Desktop link::$LINK"
+          echo "### Desktop link" >> "$GITHUB_STEP_SUMMARY"
+          echo "$LINK" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep alive
+        run: |
+          while pgrep -f "cloudflared tunnel" > /dev/null; do sleep 30; done
