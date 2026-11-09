@@ -1,0 +1,21 @@
+name: rdp
+on: workflow_dispatch
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Install desktop and VNC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server novnc websockify dbus-x11
+          mkdir -p ~/.vnc
+          echo "ChangeMe123" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          vncserver :1 -geometry 1366x768 -depth 24 -xstartup /usr/bin/startxfce4
+          websockify -D --web /usr/share/novnc 6080 localhost:5901
+      - name: Start tunnel
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          ./cloudflared tunnel --url http://localhost:6080 2>&1 | tee tunnel.log
