@@ -3,7 +3,7 @@ on: workflow_dispatch
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350
     steps:
       - name: Install desktop and VNC
         run: |
