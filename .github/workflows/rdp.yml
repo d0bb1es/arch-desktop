@@ -11,13 +11,22 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Install desktop and VNC
+        timeout-minutes: 20
         env:
           VNC_PASS: ${{ secrets.VNC_PASSWORD }}
         run: |
-          set -e
           if [ -z "$VNC_PASS" ]; then echo "VNC_PASSWORD secret is missing"; exit 1; fi
-          sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies tigervnc-standalone-server novnc websockify dbus-x11
+          getent hosts archive.ubuntu.com || echo "DNS check failed, will retry"
+          ok=0
+          for i in 1 2 3 4 5; do
+            if sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y xfce4 xfce4-goodies tigervnc-standalone-server novnc websockify dbus-x11; then
+              ok=1
+              break
+            fi
+            echo "apt failed on attempt $i, waiting 20s"
+            sleep 20
+          done
+          if [ "$ok" != 1 ]; then echo "apt install failed after 5 attempts, cancel and re-run"; exit 1; fi
           mkdir -p ~/.vnc
           echo "$VNC_PASS" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
@@ -25,6 +34,7 @@ jobs:
           websockify -D --web /usr/share/novnc 6080 localhost:5901
 
       - name: Start tunnel
+        timeout-minutes: 5
         run: |
           curl -fL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
@@ -42,8 +52,12 @@ jobs:
 
       - name: Transfer tools
         continue-on-error: true
+        timeout-minutes: 10
         run: |
-          sudo apt-get install -y rclone magic-wormhole aria2
+          for i in 1 2 3; do
+            sudo apt-get -o Acquire::Retries=5 install -y rclone magic-wormhole aria2 && break
+            sleep 15
+          done
           mkdir -p ~/share ~/Desktop
           cat > ~/serve.sh << 'EOF'
           #!/bin/bash
